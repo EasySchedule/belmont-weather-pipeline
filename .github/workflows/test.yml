@@ -1,0 +1,42 @@
+# The suite, plus a smoke of the CLI entry point.
+#
+# `node --test` alone is not enough. The suite exercises src/ and never imports
+# bin/, so a broken bin/weather-roundup.mjs still reported 23/23 passing when
+# the file was in fact a syntax error. The --help smoke below is what actually
+# reads the entry point, so the suite and the shipped CLI cannot disagree again.
+#
+# Nothing here touches the live providers. The suite runs against local stubs.
+
+name: Pipeline tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and CLI smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Parse every module
+        run: for f in $(find bin src test -name '*.mjs'); do node --check "$f"; done
+
+      - name: node --test
+        run: node --test "test/*.test.mjs"
+
+      - name: CLI smoke, no network
+        run: node bin/weather-roundup.mjs --help

@@ -1,0 +1,15 @@
+# Artifacts produced by a run. Regenerated on every roundup; never committed.
+artifact.json
+artifact-*.json
+*-settled.json
+
+# Node.
+node_modules/
+npm-debug.log*
+
+# Editor and OS noise.
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
