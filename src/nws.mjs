@@ -3,6 +3,7 @@
 import { NWS, TIME_ZONE } from './constants.mjs';
 import { pullJson, ageMinutes } from './http.mjs';
 import { shortForecastToCategory } from './metno.mjs';
+import { fingerprintProduct, fingerprintPeriodAt } from './provenance.mjs';
 
 const HAZARD_FORECAST = /thunder|frost|freeze|freezing|wind chill|heat index|windy|gust|severe|flood|fog|smoke|hail|sleet/i;
 
@@ -37,6 +38,11 @@ export async function pullNws() {
     hazard: HAZARD_FORECAST.test(period.shortForecast || '') ? period.shortForecast : null,
   }));
 
+  const fingerprint = fingerprintProduct(properties);
+  // The period a desk item would quote at the moment of this run, hashed on its
+  // own, so a later pull that changes this period alone is still detectable.
+  const publishedPeriod = fingerprintPeriodAt(properties, pull.retrievedAt);
+
   return {
     source: 'National Weather Service',
     organisation: NWS.office,
@@ -60,7 +66,18 @@ export async function pullNws() {
     updateTimeUtc: properties.updateTime || null,
     validTimes: properties.validTimes || null,
     retrievedAt: pull.retrievedAt,
+    requestedAt: pull.requestedAt,
     upstreamAgeMinutes: ageMinutes(pull.retrievedAt, generatedAt),
+    // The stamp the origin sent, as sent. The desk cites this, so the pipeline
+    // records it rather than leaving the citation unsupported (BEL-91).
+    lastModified: pull.responseHeaders?.['last-modified'] ?? null,
+    etag: pull.responseHeaders?.etag ?? null,
+    responseHeaders: pull.responseHeaders,
+    // What makes this pull's product identifiable after the fact.
+    productSha256: fingerprint.productSha256,
+    productSha256Short: fingerprint.productSha256Short,
+    periodFingerprints: fingerprint.periodFingerprints,
+    publishedPeriod,
     unitAsPublished: shaped[0]?.temperatureUnit || 'F',
     periods: shaped,
     timeZone: TIME_ZONE,

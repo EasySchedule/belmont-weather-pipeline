@@ -66,13 +66,17 @@ test('MET Norway HTTP 503: the roundup still runs on NWS, with the single-source
     assert.equal(artifact.attribution.second, null);
     assert.deepEqual(artifact.disagreementsToPrint, []);
 
-    // No mirror or aggregator was quietly substituted: exactly two hosts were
-    // contacted, both of them the endpoints of record.
-    const urls = stub.requests.map((r) => r.url).sort();
-    assert.deepEqual(urls, [
+    // No mirror or aggregator was quietly substituted: the only endpoints
+    // contacted are the two endpoints of record. NWS is asked twice, once for the
+    // product and once for the confirmation pull that proves the stamp names it,
+    // and that is the same endpoint of record rather than a second source.
+    const urls = stub.requests.map((r) => r.url);
+    assert.deepEqual([...new Set(urls)].sort(), [
       '/gridpoints/PBZ/50,48/forecast',
       '/weatherapi/locationforecast/2.0/compact?lat=40.1006&lon=-80.8501',
     ]);
+    assert.equal(urls.filter((u) => u === '/gridpoints/PBZ/50,48/forecast').length, 2);
+    assert.equal(artifact.sourceIntegrity.pullCount, 2);
   });
 });
 

@@ -10,9 +10,10 @@ import { NWS, MET_NO, TEMPERATURE_PRINT_THRESHOLD_F, TIME_ZONE, userAgent } from
 import { pullNws } from './nws.mjs';
 import { pullMetNo } from './metno.mjs';
 import { compareAll, headlineComparison } from './compare.mjs';
+import { auditSourceIntegrity } from './provenance.mjs';
 import { PullFailure } from './http.mjs';
 
-export async function runRoundup({ edition = 'morning', now = null } = {}) {
+export async function runRoundup({ edition = 'morning', now = null, confirmSource = true } = {}) {
   const startedAt = (now || new Date()).toISOString();
   const blockers = [];
   const sources = [];
@@ -47,6 +48,52 @@ export async function runRoundup({ edition = 'morning', now = null } = {}) {
       singleSourceReason: null,
       blockers,
     };
+  }
+
+  // A confirmation pull of the source of record, and the integrity check built on
+  // it. BEL-91 recorded two different forecast bodies served under one
+  // `Last-Modified`, with `generatedAt` moving backwards, so the stamp a desk item
+  // cites does not identify the product it was given. A single pull cannot show
+  // that; a second pull of the same endpoint minutes apart can. One extra GET of a
+  // free, credential-free public API is the cost of the item being checkable.
+  //
+  // A finding here does not stop the roundup. The item still publishes a stated
+  // field value, prints the disagreement and escalates, which is what BEL-17
+  // requires of an item when its source is internally inconsistent. Failing the
+  // run instead would leave a gap where the desk has nothing to check.
+  const integrityPulls = [nws];
+  let confirmation = null;
+  let confirmationFailed = null;
+  if (confirmSource) {
+    try {
+      confirmation = await pullNws();
+      integrityPulls.push(confirmation);
+    } catch (error) {
+      confirmationFailed = {
+        message: error.message,
+        retrievedAt: error instanceof PullFailure ? error.retrievedAt : new Date().toISOString(),
+      };
+    }
+  }
+  const sourceIntegrity = auditSourceIntegrity(integrityPulls);
+
+  for (const finding of sourceIntegrity.findings) {
+    blockers.push({
+      source: 'National Weather Service',
+      organisation: NWS.office,
+      endpoint: NWS.forecastUrl,
+      status: null,
+      message: finding.detail,
+      retrievedAt: startedAt,
+      userAgent: null,
+      fatal: false,
+      kind: finding.kind,
+      reason:
+        `The source of record returned two different forecast products under one stamp, so the ` +
+        `stamp cannot identify what an item was given. This roundup publishes the product it ` +
+        `actually pulled, records its fingerprint, and prints this disagreement. It does not ` +
+        `resolve it and it does not claim the disagreement is gone. Finding: ${finding.detail}`,
+    });
   }
 
   // Second independent source.
@@ -101,6 +148,19 @@ export async function runRoundup({ edition = 'morning', now = null } = {}) {
     },
     sources,
     sourceCount: sources.length,
+    sourceIntegrity: {
+      ...sourceIntegrity,
+      confirmationPull: confirmation
+        ? {
+            retrievedAt: confirmation.retrievedAt,
+            generatedAt: confirmation.upstreamRunTimeUtc,
+            lastModified: confirmation.lastModified,
+            etag: confirmation.etag,
+            productSha256Short: confirmation.productSha256Short,
+          }
+        : null,
+      confirmationPullFailed: confirmationFailed,
+    },
     singleSourceReason: sources.length === 1 ? blockers[0]?.reason || null : null,
     comparisons,
     headline,
@@ -125,6 +185,26 @@ export async function runRoundup({ edition = 'morning', now = null } = {}) {
       primary: `National Weather Service, ${NWS.office}, grid ${NWS.grid}, forecast zone ${NWS.forecastZone}, county zone ${NWS.countyZone}`,
       second: met ? `${MET_NO.attribution}, credited to ${MET_NO.organisation} (${MET_NO.licence})` : null,
       publisher: 'Belmont News publishes this item. MET Norway is a source, never the publisher.',
+    },
+    // What an entry has to carry when it cites a stamp. The stamp alone is not a
+    // reproducible citation, so the product and the period are recorded with it.
+    sourceCitation: {
+      rule:
+        'An entry citing a Last-Modified value records the generatedAt of the pull actually ' +
+        'used and the fingerprint of the period it publishes.',
+      sourceOfRecord: 'National Weather Service',
+      office: NWS.office,
+      grid: NWS.grid,
+      endpoint: NWS.forecastUrl,
+      generatedAt: nws.upstreamRunTimeUtc,
+      updateTime: nws.updateTimeUtc,
+      lastModified: nws.lastModified,
+      etag: nws.etag,
+      productSha256: nws.productSha256,
+      productSha256Short: nws.productSha256Short,
+      retrievedAt: nws.retrievedAt,
+      publishedPeriod: nws.publishedPeriod,
+      stampIdentifiesProduct: sourceIntegrity.stable,
     },
     blockers,
   };
