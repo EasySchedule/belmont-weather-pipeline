@@ -217,3 +217,63 @@ test('a source that answers with no stamp at all records null, not a fabricated 
     assert.equal(artifact.sourceCitation.stampIdentifiesProduct, true);
   });
 });
+test('the representation a pull asked for is recorded, so a citation can name it', async () => {
+  await withStub({ metNoBehaviour: 'ok', nwsBehaviour: 'ok' }, async () => {
+    const { runRoundup } = await import('../src/roundup.mjs');
+    const artifact = await runRoundup({ edition: 'morning' });
+
+    assert.equal(artifact.sourceCitation.accept, 'application/json');
+    assert.ok(artifact.sourceCitation.contentType, 'the representation that came back is named');
+    assert.deepEqual(artifact.sourceIntegrity.requestAccept, ['application/json']);
+    assert.equal(artifact.sourceIntegrity.responseContentTypes.length, 1);
+    assert.equal(
+      artifact.sourceIntegrity.representationDrifts.length,
+      0,
+      'one pinned representation is not drift',
+    );
+  });
+});
+
+test('a body chosen by the Accept header is reported as representation drift, not a mystery', () => {
+  const audit = auditSourceIntegrity([
+    {
+      retrievedAt: '2026-10-03T01:16:26.000Z',
+      headers: { 'last-modified': NWS_FIXTURE_LAST_MODIFIED, accept: '*/*', contentType: 'application/json' },
+      fingerprint: fingerprintProduct(NWS_FIXTURE_BODY.properties),
+    },
+    {
+      retrievedAt: '2026-10-03T01:16:33.000Z',
+      headers: {
+        'last-modified': NWS_FIXTURE_LAST_MODIFIED,
+        accept: 'application/geo+json',
+        contentType: 'application/geo+json; charset=utf-8',
+      },
+      fingerprint: fingerprintProduct(NWS_FIXTURE_ALTERNATE_BODY.properties),
+    },
+  ]);
+
+  assert.equal(audit.stable, false);
+  assert.equal(audit.representationDrifts.length, 1);
+  const drift = audit.representationDrifts[0];
+  assert.deepEqual(drift.requestAccept.sort(), ['*/*', 'application/geo+json']);
+  assert.equal(drift.distinctProductsPerContentType.length, 2);
+  assert.ok(drift.detail.includes('does not identify the product'));
+});
+
+test('the stub picks the body by Accept and stamps both identically', async () => {
+  await withStub({ metNoBehaviour: 'ok', nwsBehaviour: 'per-representation' }, async (stub) => {
+    const geo = await fetch(`${stub.baseUrl}/gridpoints/PBZ/50,48/forecast`, {
+      headers: { Accept: 'application/geo+json' },
+    });
+    const any = await fetch(`${stub.baseUrl}/gridpoints/PBZ/50,48/forecast`, { headers: { Accept: '*/*' } });
+    const geoBody = await geo.json();
+    const anyBody = await any.json();
+
+    assert.equal(geo.headers.get('last-modified'), any.headers.get('last-modified'));
+    assert.notEqual(
+      geoBody.properties.periods[0].probabilityOfPrecipitation.value,
+      anyBody.properties.periods[0].probabilityOfPrecipitation.value,
+    );
+    assert.notEqual(geo.headers.get('content-type'), any.headers.get('content-type'));
+  });
+});

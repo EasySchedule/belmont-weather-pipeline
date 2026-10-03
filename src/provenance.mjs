@@ -125,6 +125,9 @@ export function observePull({ endpoint, retrievedAt, headers = {}, fingerprint }
     date: headers.date ?? null,
     age: headers.age ?? null,
     cacheControl: headers['cache-control'] ?? null,
+    accept: headers.accept ?? null,
+    contentType: headers.contentType ?? null,
+    vary: headers.vary ?? null,
     serverId: headers['x-server-id'] ?? null,
     edgeRequestId: headers['x-edge-request-id'] ?? null,
     requestId: headers['x-request-id'] ?? null,
@@ -148,6 +151,9 @@ export function observationFrom(source) {
       date: source.responseHeaders?.date ?? null,
       age: source.responseHeaders?.age ?? null,
       'cache-control': source.responseHeaders?.['cache-control'] ?? null,
+      contentType: source.contentType ?? source.responseHeaders?.['content-type'] ?? null,
+      vary: source.responseHeaders?.vary ?? null,
+      accept: source.accept ?? null,
       'x-server-id': source.responseHeaders?.['x-server-id'] ?? null,
       'x-edge-request-id': source.responseHeaders?.['x-edge-request-id'] ?? null,
       'x-request-id': source.responseHeaders?.['x-request-id'] ?? null,
@@ -225,6 +231,40 @@ const generatedAtRegression = (pulls) => {
   return regressions;
 };
 
+// This endpoint serves a different body per negotiated media type, all of them
+// under one stamp (BEL-94). Two pulls of one endpoint that came back as
+// different representations are not two forecasts disagreeing; they are one URL
+// answering two questions. Naming that is the difference between an actionable
+// report and a mystery.
+const representationDrift = (pulls) => {
+  const types = [...new Set(pulls.map((p) => p.contentType).filter(Boolean))];
+  const accepts = [...new Set(pulls.map((p) => p.accept).filter(Boolean))];
+  if (types.length + accepts.length < 2) return [];
+  const byType = new Map();
+  for (const pull of pulls) {
+    if (!pull.contentType) continue;
+    if (!byType.has(pull.contentType)) byType.set(pull.contentType, new Set());
+    byType.get(pull.contentType).add(pull.productSha256Short);
+  }
+  const productsPerType = [...byType.entries()].filter(([, set]) => set.size > 1);
+  if (types.length < 2 && productsPerType.length === 0) return [];
+  return [
+    {
+      kind: 'representation_drift',
+      requestAccept: accepts,
+      responseContentType: types,
+      distinctProductsPerContentType: [...byType.entries()].map(([type, set]) => ({
+        contentType: type,
+        products: [...set],
+      })),
+      detail:
+        `This endpoint answered ${types.length} representation(s) for the same URL under one ` +
+        `stamp: ${types.join(' | ')}. The bodies differ, so the stamp does not identify the ` +
+        `product and a citation of it cannot be reproduced by re-pulling the URL.`,
+    },
+  ];
+};
+
 // The whole check. Reads only what the pulls observed, so it runs on a single
 // confirmation pull and on a longer series alike, and returns an object that says
 // plainly whether the source was stable across the pulls made.
@@ -236,15 +276,18 @@ export function auditSourceIntegrity(pulls = []) {
   const lastModifiedCollisions = stampCollision('lastModified', observations);
   const etagCollisions = stampCollision('etag', observations);
   const generatedAtRegressions = generatedAtRegression(observations);
+  const representationDrifts = representationDrift(observations);
 
   const fingerprints = [...new Set(observations.map((p) => p.productSha256Short).filter(Boolean))];
   const generatedAts = [...new Set(observations.map((p) => p.generatedAt).filter(Boolean))].sort();
   const stamps = [...new Set(observations.map((p) => p.lastModified).filter(Boolean))];
+  const contentTypes = [...new Set(observations.map((p) => p.contentType).filter(Boolean))];
 
   const findings = [
     ...lastModifiedCollisions.map((c) => ({ kind: 'last_modified_collision', ...c })),
     ...etagCollisions.map((c) => ({ kind: 'etag_collision', ...c })),
     ...generatedAtRegressions.map((r) => ({ kind: 'generated_at_regression', ...r })),
+    ...representationDrifts,
   ];
 
   // Only a real disagreement between two bodies of the same endpoint counts.
@@ -262,11 +305,14 @@ export function auditSourceIntegrity(pulls = []) {
     distinctProductFingerprints: fingerprints,
     distinctGeneratedAt: generatedAts,
     lastModifiedStamps: stamps,
+    requestAccept: [...new Set(observations.map((p) => p.accept).filter(Boolean))],
+    responseContentTypes: contentTypes,
     stable: findings.length === 0 && !distinctProducts,
     distinctProductsReturned: distinctProducts,
     findings,
     lastModifiedCollisions,
     etagCollisions,
     generatedAtRegressions,
+    representationDrifts,
   };
 }

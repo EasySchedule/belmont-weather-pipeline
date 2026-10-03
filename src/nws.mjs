@@ -72,6 +72,12 @@ export async function pullNws() {
     // records it rather than leaving the citation unsupported (BEL-91).
     lastModified: pull.responseHeaders?.['last-modified'] ?? null,
     etag: pull.responseHeaders?.etag ?? null,
+    // Which representation was asked for and which came back. This endpoint
+    // serves a different body per media type under one stamp, so a citation that
+    // omits the pair cannot be reproduced (BEL-94).
+    accept: pull.accept ?? null,
+    contentType: pull.contentType ?? null,
+    vary: pull.responseHeaders?.vary ?? null,
     responseHeaders: pull.responseHeaders,
     // What makes this pull's product identifiable after the fact.
     productSha256: fingerprint.productSha256,

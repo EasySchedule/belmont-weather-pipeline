@@ -110,7 +110,11 @@ export const NWS_FIXTURE_ALTERNATE_BODY = {
 };
 
 // metNoBehaviour: 'ok' | 'http-503' | 'http-203' | 'empty-200' | 'connection-refused'
-// nwsBehaviour: 'ok' | 'two-bodies-one-stamp' | 'no-last-modified'
+// nwsBehaviour:
+//   'ok'                      one body, stamped, with the negotiated type echoed
+//   'two-bodies-one-stamp'    two bodies, one Last-Modified, one ETag, alternating
+//   'no-last-modified'        one body, no stamp at all
+//   'per-representation'      two bodies chosen by the Accept header, one stamp
 export async function startStub({
   metNoBehaviour = 'ok',
   metBody = null,
@@ -120,7 +124,11 @@ export async function startStub({
   const requests = [];
   let nwsPulls = 0;
   const server = createServer((req, res) => {
-    requests.push({ url: req.url, userAgent: req.headers['user-agent'] || null });
+    requests.push({
+      url: req.url,
+      userAgent: req.headers['user-agent'] || null,
+      accept: req.headers.accept || null,
+    });
     const send = (status, body) => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(typeof body === 'string' ? body : JSON.stringify(body));
@@ -141,12 +149,23 @@ export async function startStub({
       // The order is the one BEL-91 recorded: the 00:19:57 generation was served
       // first and the 23:17:15 generation came back on a later pull under the same
       // stamp, so generatedAt moves backwards between two pulls of one URL.
-      const body =
-        nwsBehaviour === 'two-bodies-one-stamp' && nwsPulls % 2 === 0
-          ? NWS_FIXTURE_ALTERNATE_BODY
-          : NWS_FIXTURE_BODY;
+      // BEL-94: the endpoint picks the body by negotiated media type and stamps
+      // every representation identically. Reproduced here so the pipeline has to
+      // record which representation it asked for.
+      const accept = req.headers.accept || '';
+      const wantsGeoJson = accept.includes('application/geo+json');
+      let body = NWS_FIXTURE_BODY;
+      if (nwsBehaviour === 'per-representation') {
+        body = wantsGeoJson ? NWS_FIXTURE_ALTERNATE_BODY : NWS_FIXTURE_BODY;
+      } else if (nwsBehaviour === 'two-bodies-one-stamp' && nwsPulls % 2 === 0) {
+        body = NWS_FIXTURE_ALTERNATE_BODY;
+      }
       nwsPulls += 1;
-      res.writeHead(200, { 'Content-Type': 'application/json', ...headers });
+      res.writeHead(200, {
+        'Content-Type': wantsGeoJson ? 'application/geo+json; charset=utf-8' : 'application/json',
+        Vary: 'Accept,Feature-Flags,Accept-Language',
+        ...headers,
+      });
       return res.end(JSON.stringify(body));
     }
 

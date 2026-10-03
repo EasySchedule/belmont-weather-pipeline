@@ -71,6 +71,8 @@ if (artifact.sourceIntegrity) {
     `  source integrity: pulls=${si.pullCount} stable=${si.stable} ` +
       `products=${si.distinctProductFingerprints.join(',')} ` +
       `lastModified=${si.lastModifiedStamps.join(',') || 'none'} ` +
+      `accept=${si.requestAccept.join(',') || 'none'} ` +
+      `contentType=${si.responseContentTypes.join(',') || 'none'} ` +
       `findings=${si.findings.length}`,
   );
   for (const finding of si.findings) lines.push(`  FINDING ${finding.kind}: ${finding.detail}`);

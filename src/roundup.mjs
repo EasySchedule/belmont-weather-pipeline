@@ -200,6 +200,8 @@ export async function runRoundup({ edition = 'morning', now = null, confirmSourc
       updateTime: nws.updateTimeUtc,
       lastModified: nws.lastModified,
       etag: nws.etag,
+      accept: nws.accept,
+      contentType: nws.contentType,
       productSha256: nws.productSha256,
       productSha256Short: nws.productSha256Short,
       retrievedAt: nws.retrievedAt,
