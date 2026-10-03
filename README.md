@@ -39,9 +39,36 @@ node test/run-failure-path-demo.mjs http-503
 
 | Code | Meaning |
 | --- | --- |
-| `0` | The roundup ran, on both sources or on one with the reason printed. |
+| `0` | The roundup ran, on both sources or on one with the reason printed, and the source of record was stable across its pulls. |
 | `2` | The source of record did not answer, so the roundup did not run. |
-| `3` | A blocker was raised but the roundup still ran (MET Norway missing). |
+| `3` | A blocker was raised but the roundup still ran. Either the second source is missing, or the source of record served two different products under one stamp. |
+
+## Product identity
+
+BEL-17 section 2 makes this API the source of record and requires an item to
+cite the `generatedAt` of the pull actually used. On 2026-10-03 that endpoint
+served three different `generatedAt` values and two different forecast bodies
+under one identical `Last-Modified` and one identical `ETag`, so a citation of
+that stamp cannot be reproduced by re-pulling the URL. The evidence is in
+`docs/bel-91-stamp-does-not-identify-product.md`.
+
+So every run does more than pull the source of record once:
+
+- It records the response headers that decide which product a pull was served.
+  An absent header is recorded as `null`, never inferred.
+- It fingerprints each pull over exactly the fields an item publishes, per period
+  and for the product as a whole.
+- It makes a **confirmation pull** of the same endpoint and compares. Two pulls
+  sharing a `Last-Modified` or an `ETag` but not a fingerprint is a collision, and
+  `generatedAt` moving backwards between pulls is a regression. Both are reported.
+- The artifact carries `sourceIntegrity` (what was compared, and what was found)
+  and `sourceCitation` (`generatedAt`, `Last-Modified`, product fingerprint, and
+  the hash of the period the item publishes).
+
+A finding does not stop the roundup. The item publishes the product it actually
+pulled, records its fingerprint, prints the finding and escalates, which is what
+BEL-17 requires of an item whose source is internally inconsistent. The run exits
+`3`. Failing instead would leave a gap where the desk has nothing to check.
 
 ## Sources
 

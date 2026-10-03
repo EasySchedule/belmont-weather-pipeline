@@ -6,9 +6,12 @@
 //   node bin/weather-roundup.mjs --edition morning --pretty
 //
 // Exit codes:
-//   0  the roundup ran. With both sources, or on one source with the reason printed.
+//   0  the roundup ran. With both sources, on one source with the reason printed,
+//      and with the source of record stable across its pulls.
 //   2  the source of record did not answer, so the roundup did not run.
-//   3  a blocker was raised but the roundup still ran (MET Norway missing).
+//   3  a blocker was raised but the roundup still ran. Either the second source is
+//      missing, or the source of record served two different products under one
+//      stamp. The item publishes what was pulled, prints the finding and escalates.
 
 import { runRoundup } from '../src/roundup.mjs';
 
@@ -61,6 +64,21 @@ if (artifact.headline) {
       `${h.signedDifferenceFahrenheit >= 0 ? '+' : ''}${h.signedDifferenceFahrenheit} F ` +
       `withinThreshold=${h.withinThreshold} mustPrint=${h.mustPrintDisagreement}`,
   );
+}
+if (artifact.sourceIntegrity) {
+  const si = artifact.sourceIntegrity;
+  lines.push(
+    `  source integrity: pulls=${si.pullCount} stable=${si.stable} ` +
+      `products=${si.distinctProductFingerprints.join(',')} ` +
+      `lastModified=${si.lastModifiedStamps.join(',') || 'none'} ` +
+      `accept=${si.requestAccept.join(',') || 'none'} ` +
+      `contentType=${si.responseContentTypes.join(',') || 'none'} ` +
+      `findings=${si.findings.length}`,
+  );
+  for (const finding of si.findings) lines.push(`  FINDING ${finding.kind}: ${finding.detail}`);
+  if (si.confirmationPullFailed) {
+    lines.push(`  confirmation pull failed: ${si.confirmationPullFailed.message}`);
+  }
 }
 if (artifact.singleSourceReason) lines.push(`  single-source reason: ${artifact.singleSourceReason}`);
 for (const blocker of artifact.blockers) {

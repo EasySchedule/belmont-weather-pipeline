@@ -1,0 +1,18 @@
+rnd Accept                  pull      generatedAt                  pop  Tonight start             body sha      short
+1   none                    01:16:26Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+1   */*                     01:16:28Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+1   application/json        01:16:30Z 2026-10-03T00:58:51+00:00      3  2026-10-02T20:00:00-04:00 ed9636067d79  Mostly Cloudy
+1   application/geo+json    01:16:33Z 2026-10-03T00:19:57+00:00      3  2026-10-02T20:00:00-04:00 78fe4e14327d  Mostly Cloudy
+2   none                    01:16:35Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+2   */*                     01:16:37Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+2   application/json        01:16:39Z 2026-10-03T00:58:51+00:00      3  2026-10-02T20:00:00-04:00 ed9636067d79  Mostly Cloudy
+2   application/geo+json    01:16:41Z 2026-10-03T00:19:57+00:00      3  2026-10-02T20:00:00-04:00 78fe4e14327d  Mostly Cloudy
+3   none                    01:16:44Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+3   */*                     01:16:46Z 2026-10-02T23:17:15+00:00     17  2026-10-02T19:00:00-04:00 26f51f4a95a2  Slight Chance Rain Showers the
+3   application/json        01:16:48Z 2026-10-03T00:58:51+00:00      3  2026-10-02T20:00:00-04:00 ed9636067d79  Mostly Cloudy
+3   application/geo+json    01:16:50Z 2026-10-03T00:19:57+00:00      3  2026-10-02T20:00:00-04:00 78fe4e14327d  Mostly Cloudy
+
+distinct Last-Modified across all 12 pulls: ['Fri, 02 Oct 2026 22:41:34 GMT']
+distinct ETag across all 12 pulls       : ['W/"1790980896:dtagent10337260504112723F6xZ:dtagent10337260504112723F6xZ"']
+distinct generatedAt                    : 3
+Tonight startTime values seen           : ['2026-10-02T19:00:00-04:00', '2026-10-02T20:00:00-04:00']

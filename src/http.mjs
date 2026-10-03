@@ -4,6 +4,50 @@
 
 import { userAgent } from './constants.mjs';
 
+// The response headers that decide which product a pull was served, and that a
+// later pull has to be compared against. Before BEL-91 the pipeline recorded the
+// body of a pull but not the stamp that named it, so a weather item could cite a
+// `Last-Modified` value the pipeline had never captured and nobody could tell two
+// products apart. Only headers a reader can act on are kept; the rest of the
+// response head is not provenance.
+const PROVENANCE_HEADERS = [
+  'last-modified',
+  'etag',
+  'date',
+  'age',
+  'cache-control',
+  'expires',
+  'content-type',
+  'vary',
+  'x-request-id',
+  'x-correlation-id',
+  'x-server-id',
+  'x-edge-request-id',
+  'server-timing',
+];
+
+// A pull that carries no `Last-Modified` at all is not silently treated as if it
+// carried a fresh one. `null` means the header was absent, which is a different
+// fact from a value, and BEL-17 section 2 requires the two not be conflated.
+//
+// `content-type` and `vary` are captured because this endpoint serves a different
+// body per negotiated media type, all of them under one stamp (BEL-94). A pull
+// that does not say which representation it asked for cannot be reproduced by
+// re-pulling the URL.
+function captureHeaders(response) {
+  const captured = {};
+  for (const name of PROVENANCE_HEADERS) {
+    const value = response.headers.get(name);
+    if (value !== null && value !== undefined) captured[name] = value;
+  }
+  return captured;
+}
+
+// The `Accept` the pipeline actually sends, recorded because it decides which
+// representation of a weather product comes back. One constant here, always
+// recorded, so a printed number can be traced to the bytes it came from.
+export const PIPELINE_ACCEPT = 'application/json';
+
 export class PullFailure extends Error {
   constructor(message, { endpoint, status, retrievedAt, bodyHead, deprecated, userAgent }) {
     super(message);
@@ -26,7 +70,7 @@ export async function pullJson(endpoint, { label }) {
   let response;
   try {
     response = await fetch(endpoint, {
-      headers: { 'User-Agent': sentUserAgent, Accept: 'application/json' },
+      headers: { 'User-Agent': sentUserAgent, Accept: PIPELINE_ACCEPT },
       redirect: 'follow',
     });
   } catch (cause) {
@@ -95,6 +139,13 @@ export async function pullJson(endpoint, { label }) {
     requestedAt: requestedAt.toISOString(),
     retrievedAt: retrievedAt.toISOString(),
     userAgent: sentUserAgent,
+    // Which representation was asked for, and which one came back. This endpoint
+    // serves a different body per media type under one stamp (BEL-94), so the
+    // pair is part of the citation and not an implementation detail.
+    accept: PIPELINE_ACCEPT,
+    contentType: response.headers.get('content-type'),
+    // The stamp that named this product, as the origin sent it. Never derived.
+    responseHeaders: captureHeaders(response),
     body,
   };
 }
